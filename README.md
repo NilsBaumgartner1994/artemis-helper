@@ -37,7 +37,9 @@ yarn exercise-export --dir /pfad/zu/exporten 1 3              # abweichender Exp
 - `--username`/`--password` bzw. `--token` überschreiben nur diesen einen Aufruf, ohne `.env` zu verändern.
 - `--dir` (bzw. `--folder`) legt den Export-/Import-Ordner für diesen Aufruf fest. Ohne Flag wird der zuletzt gespeicherte Ordner aus `.env` verwendet, oder interaktiv gefragt (Antwort wird dann gespeichert).
 
-Exporte landen standardmäßig in `exports/<id>-<slug>/` (nicht in Git). Zugangsdaten und der gemerkte Export-Ordner liegen in `.env` (ebenfalls nicht in Git, `chmod 600`).
+Exporte landen standardmäßig in `exports/<id>-<slug>/` (nicht in Git). Das Artemis-Export-Bundle wird dabei direkt **entpackt** nach `export/` (Template-, Lösungs- und Test-Repo als normale Ordner, kein Zip) — so können Änderungen bequem direkt in den Dateien gemacht werden; `yarn exercise-import` packt den Ordner beim Hochladen wieder. Jeder Export bekommt eine generierte `README.md`; die zentrale Anleitung zum Bearbeiten von Aufgaben (Bewertung, Struktur-Orakel, Behavior-Tests) steht in [EXERCISE_GUIDE.md](EXERCISE_GUIDE.md).
+
+Zugangsdaten und der gemerkte Export-Ordner liegen in `.env` (ebenfalls nicht in Git, `chmod 600`).
 
 ## Grenzen der Artemis-API
 

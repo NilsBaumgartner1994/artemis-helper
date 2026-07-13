@@ -6,7 +6,9 @@ import { ArtemisClient, describeError } from "../lib/artemisClient.js";
 import { parseCliArgs } from "../lib/cliArgs.js";
 import { loadConfig } from "../lib/config.js";
 import { resolveExportDir } from "../lib/exportDir.js";
+import { extractZipRecursively } from "../lib/exportZip.js";
 import { cloneRepo } from "../lib/git.js";
+import { writeExportReadme } from "../lib/exportReadme.js";
 import { exerciseFolder, writeManifest } from "../lib/storage.js";
 import type { Course, Exercise } from "../lib/types.js";
 
@@ -26,10 +28,11 @@ async function exportProgrammingExercise(
   cloneCredentials: { username?: string; vcsToken?: string },
   folder: string,
   exercise: Exercise
-): Promise<{ hasZip: boolean; clonedRepos: string[] }> {
+): Promise<{ hasBundle: boolean; clonedRepos: string[] }> {
   console.log(`Exportiere Programmieraufgabe "${exercise.title}" …`);
   const { data } = await client.exportInstructorExercise(exercise.id);
-  fs.writeFileSync(path.join(folder, "export.zip"), data);
+  await extractZipRecursively(data, path.join(folder, "export"));
+  console.log(`  Export-Bundle entpackt nach export/ (Template-, Lösungs- und Test-Repo als Ordner).`);
 
   const details = await client.getProgrammingExerciseWithParticipations(exercise.id);
   fs.writeFileSync(path.join(folder, "exercise.json"), JSON.stringify(details, null, 2));
@@ -39,7 +42,7 @@ async function exportProgrammingExercise(
     console.warn(
       "  Kein VCS-Token/Benutzername verfügbar, Repositories werden nicht geklont (siehe `yarn artemis-login`)."
     );
-    return { hasZip: true, clonedRepos };
+    return { hasBundle: true, clonedRepos };
   }
 
   const templateParticipation = details.templateParticipation as { repositoryUri?: string } | undefined;
@@ -67,7 +70,7 @@ async function exportProgrammingExercise(
     }
   }
 
-  return { hasZip: true, clonedRepos };
+  return { hasBundle: true, clonedRepos };
 }
 
 async function exportExercise(
@@ -79,13 +82,20 @@ async function exportExercise(
   exercise: Exercise
 ): Promise<void> {
   const folder = exerciseFolder(exportDir, exercise.id, exercise.title);
+  // Wipe generated artifacts from a previous export of the same exercise so old zips or
+  // stale extracted bundles can't mix with the fresh state.
+  if (fs.existsSync(folder)) {
+    for (const stale of ["export.zip", "export", "exercise.json", "manifest.json", "README.md"]) {
+      fs.rmSync(path.join(folder, stale), { recursive: true, force: true });
+    }
+  }
   fs.mkdirSync(folder, { recursive: true });
 
-  let hasZip = false;
+  let hasBundle = false;
   let clonedRepos: string[] = [];
 
   if (exercise.type === "programming") {
-    ({ hasZip, clonedRepos } = await exportProgrammingExercise(client, cloneCredentials, folder, exercise));
+    ({ hasBundle, clonedRepos } = await exportProgrammingExercise(client, cloneCredentials, folder, exercise));
   } else if (exercise.type === "quiz") {
     console.log(
       `Quiz-Aufgabe "${exercise.title}": Artemis unterstützt keinen Export/Import über die API. Speichere nur die Konfiguration als Referenz.`
@@ -99,7 +109,7 @@ async function exportExercise(
     fs.writeFileSync(path.join(folder, "exercise.json"), JSON.stringify(details, null, 2));
   }
 
-  writeManifest(folder, {
+  const manifest = {
     exerciseId: exercise.id,
     type: exercise.type,
     title: exercise.title,
@@ -107,9 +117,11 @@ async function exportExercise(
     sourceCourseId: course.id,
     sourceBaseUrl: baseUrl,
     exportedAt: new Date().toISOString(),
-    hasZip,
+    hasBundle,
     clonedRepos,
-  });
+  };
+  writeManifest(folder, manifest);
+  writeExportReadme(folder, manifest, course);
 
   console.log(`  Gespeichert in ${folder}`);
 }

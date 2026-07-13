@@ -6,7 +6,7 @@ import { ensureAuthenticated } from "../lib/auth.js";
 import { parseCliArgs } from "../lib/cliArgs.js";
 import { applyAdjustments, promptExerciseAdjustments, suggestShortName } from "../lib/exerciseAdjustments.js";
 import { resolveExportDir } from "../lib/exportDir.js";
-import { extractExerciseJsonFromZip } from "../lib/exportZip.js";
+import { extractExerciseJsonFromZip, readExerciseDetailsFromDir, zipDirectory } from "../lib/exportZip.js";
 import { listStoredExports, type StoredExport } from "../lib/storage.js";
 import type { Course, Exercise } from "../lib/types.js";
 
@@ -119,17 +119,25 @@ async function importOne(
     return;
   }
 
+  // Artemis's own export bundle contains a purpose-built, already-sanitized re-import JSON
+  // (no stale nested-entity ids like teamAssignmentConfig) - use that as the payload base
+  // instead of our separately-fetched full GET response.
   let zipExerciseJson: Record<string, unknown> | undefined;
+  let bundleZipData: Buffer | undefined;
   if (manifest.type === "programming") {
-    const zipPath = path.join(folder, "export.zip");
-    if (!manifest.hasZip || !fs.existsSync(zipPath)) {
-      console.warn(`Kein Export-Zip für "${manifest.title}" vorhanden, überspringe.`);
+    const bundleDir = path.join(folder, "export");
+    const legacyZipPath = path.join(folder, "export.zip");
+    if (fs.existsSync(bundleDir)) {
+      zipExerciseJson = readExerciseDetailsFromDir(bundleDir);
+      console.log(`  Packe export/-Ordner (inkl. lokaler Änderungen) für den Upload …`);
+      bundleZipData = await zipDirectory(bundleDir);
+    } else if (fs.existsSync(legacyZipPath)) {
+      zipExerciseJson = await extractExerciseJsonFromZip(fs.readFileSync(legacyZipPath));
+      bundleZipData = fs.readFileSync(legacyZipPath);
+    } else {
+      console.warn(`Kein Export-Bundle (export/ oder export.zip) für "${manifest.title}" vorhanden, überspringe.`);
       return;
     }
-    // Artemis's own export zip contains a purpose-built, already-sanitized re-import JSON
-    // (no stale nested-entity ids like teamAssignmentConfig) - use that as the payload base
-    // instead of our separately-fetched full GET response.
-    zipExerciseJson = await extractExerciseJsonFromZip(fs.readFileSync(zipPath));
   }
 
   console.log(`\n--- "${manifest.title}" ---`);
@@ -163,14 +171,12 @@ async function importOne(
   payload = applyAdjustments(payload, adjustments);
 
   if (manifest.type === "programming") {
-    const zipPath = path.join(folder, "export.zip");
     console.log(`Importiere "${payload.title}" nach "${targetCourse.title}" (aus Datei) …`);
-    const zipData = fs.readFileSync(zipPath);
     const result = await client.importProgrammingExerciseFromFile(
       targetCourse.id,
       payload,
-      zipData,
-      path.basename(zipPath)
+      bundleZipData!,
+      `${manifest.exerciseId}-export.zip`
     );
     console.log(`  Importiert als neue Aufgabe (id: ${result.id}).`);
     return;
