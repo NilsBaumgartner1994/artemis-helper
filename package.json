@@ -1,0 +1,18 @@
+{
+  "name": "artemis-helper",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "artemis-login": "yarn workspace @artemis-helper/cli run login",
+    "exercise-export": "yarn workspace @artemis-helper/cli run export",
+    "exercise-import": "yarn workspace @artemis-helper/cli run import",
+    "exercise-edit": "yarn workspace @artemis-helper/cli run edit"
+  }
+}
